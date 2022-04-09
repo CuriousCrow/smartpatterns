@@ -1,7 +1,14 @@
 package ru.levolex.smartpattern.expression;
 
 import ru.levolex.smartpattern.StrUtils;
+import ru.levolex.smartpattern.expression.functions.RandomIntFunction;
+import ru.levolex.smartpattern.expression.functions.SmallFunctions;
+import ru.levolex.smartpattern.expression.functions.TodayFunction;
+import ru.levolex.smartpattern.expression.operations.IntegerOperation;
+import ru.levolex.smartpattern.expression.operations.StringOperation;
 import ru.levolex.smartpattern.interfaces.Expression;
+import ru.levolex.smartpattern.interfaces.FunctionHandler;
+import ru.levolex.smartpattern.interfaces.OperationHandler;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -36,8 +43,17 @@ public class SmartExpression implements Expression {
     private ItemType itemType = ItemType.Null;
     private String operation;
     private Byte priority;
+    protected static final List<FunctionHandler> functionHandlers = new ArrayList<>();
+    protected static final List<OperationHandler> operationHandlers = new ArrayList<>();
     private List<SmartExpression> siblings = new ArrayList<>();
     protected List<SmartExpression> children = new ArrayList<>();
+
+    public static void registerOperationHandler(OperationHandler operationHandler) {
+        operationHandlers.add(operationHandler);
+    }
+    public static void registerFunctionHandler(FunctionHandler functionHandler) {
+        functionHandlers.add(functionHandler);
+    }
 
     private void parseExpression(String exprStr, ExpressionType expressionType) {
         children.clear();
@@ -316,33 +332,13 @@ public class SmartExpression implements Expression {
     }
 
     protected boolean performOperation(SmartExpression item1, SmartExpression item2) {
-        //TODO: Возможно здесь нужно всюду использовать .getValue
-
-         if (item1.itemType == ItemType.String || item2.itemType == ItemType.String) {
-            if (item1.operation.equals("+")) {
-                item2.value = item1.value.toString() + item2.value.toString();
-            }
-            else if (item1.operation.equals("-")) {
-                item2.value = item1.value.toString().replace(item2.value.toString(), "");
-            }
-            else {
-                item2.value = "";
-            }
-        }
-        else if (Arrays.asList(ItemType.Integer, ItemType.Float).contains(item1.itemType)) {
-            if (item1.operation.equals("+"))
-                item2.value = (Integer)item1.value + (Integer)item2.value;
-            else if (item1.operation.equals("-"))
-                item2.value = (Integer)item1.value - (Integer)item2.value;
-            else if (item1.operation.equals("*"))
-                item2.value = (Integer)item1.value * (Integer)item2.value;
-            else if (item1.operation.equals("/"))
-                item2.value = (Integer)item1.value / (Integer)item2.value;
-            else
-                item2.value = 0;
+        Optional<OperationHandler> operationHandler = operationHandlers.stream().filter(oh -> oh.match(item1, item2)).findFirst();
+        if (operationHandler.isPresent()) {
+            operationHandler.get().performOperation(item1, item2);
+            return true;
         }
         else {
-            return false;
+            System.out.println("Operation handler not found");
         }
 
         item1.value = "";
@@ -352,48 +348,24 @@ public class SmartExpression implements Expression {
     }
 
     protected boolean performFunction() {
-        switch (this.expression) {
-            case "pi":
-                this.value = 3.14;
-                this.itemType = ItemType.Float;
-                break;
-            case "sp":
-                this.value = " ";
-                this.itemType = ItemType.String;
-                break;
-            case "randomStr": {
-                Random random = new Random();
-                this.value = children.get(random.nextInt(children.size())).getValue();
-                this.itemType = ItemType.String;
-                break;
-            }
-            case "randomInt": {
-                Random random = new Random();
-                if (children.size() == 1) {
-                    int intBound = Integer.parseInt(children.get(0).getValue().toString());
-                    this.value = random.nextInt(intBound);
-                } else if (children.size() == 2) {
-                    int intMin = (Integer) children.get(0).getValue();
-                    int intMax = (Integer) children.get(1).getValue();
-                    this.value = random.nextInt(intMax - intMin) + intMin;
-                } else {
-                    this.value = children.get(random.nextInt(children.size())).getValue();
-                }
-                itemType = ItemType.Integer;
-                break;
-            }
-            case "today":
-            case "now":
-                this.value = new Date();
-                this.itemType = ItemType.Date;
-                break;
-            default:
-                return false;
+        Optional<FunctionHandler> functionHandler = functionHandlers.stream().filter(fh -> fh.match(this)).findFirst();
+        if (functionHandler.isPresent()) {
+            functionHandler.get().calculateFunction(this);
+            return true;
         }
-        return true;
+        else {
+            System.out.printf("Cant find proper handler for function: %s%n", this.expression);
+            return false;
+        }
     }
 
     public SmartExpression() {
+        registerFunctionHandler(new TodayFunction());
+        registerFunctionHandler(new SmallFunctions());
+        registerFunctionHandler(new RandomIntFunction());
+
+        registerOperationHandler(new StringOperation());
+        registerOperationHandler(new IntegerOperation());
     }
 
     public SmartExpression(String name, String expression) {
