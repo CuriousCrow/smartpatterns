@@ -19,6 +19,18 @@ public class SmartExpression implements Expression {
     private static int MAX_PRIORITY = 3;
     private static final String VARIABLE_LB = "{";
     private static final String VARIABLE_RB = "}";
+    private static final Character LBRACKET = '(';
+    private static final Character RBRACKET = ')';
+    private static final Character ARG_DELIMITER = ';';
+
+    private static final String ERR_CIRCULAR_REFERENCE = "Circular reference of value: %s";
+    private static final String ERR_UNKNOWN_VARIABLE = "Unknown variable: %s";
+    private static final String ERR_UNKNOWN_FUNCTION = "Unknown function: %s";
+    private static final String ERR_UNDEFINED_OPERATION = "Undefined operation %s %s %s";
+    private static final String ERR_OPERATION_HANDLER_NOT_FOUND = "Operation handler not found";
+    private static final String ERR_FUNCTION_HANDLER_NOT_FOUND = "Cant find proper handler for function: %s%n";
+    private static final String ERR_EXPRESSION_NOT_FOUND = "Expression %s not found";
+
 
     public enum ItemType {
         Integer,
@@ -68,10 +80,10 @@ public class SmartExpression implements Expression {
                 inQuotes = !inQuotes;
             }
 
-            if (chr == '(') {
+            if (chr == LBRACKET) {
                 bracketLevel++;
             }
-            if (chr == ')') {
+            if (chr == RBRACKET) {
                 bracketLevel--;
             }
 
@@ -159,7 +171,7 @@ public class SmartExpression implements Expression {
         }
 
         itemType = ItemType.String;
-        if ((expression.length() >= 2) && expression.startsWith("'") && expression.endsWith("'")) {
+        if ((expression.length() >= 2) && expression.startsWith(ARG_DELIMITER.toString()) && expression.endsWith(ARG_DELIMITER.toString())) {
             expression = StrUtils.removeEndings(expression);
         }
         value = expression;
@@ -170,10 +182,10 @@ public class SmartExpression implements Expression {
             return false;
         StringBuilder sb = new StringBuilder(str);
         byte level = 1;
-        for(int i = sb.indexOf("(") + 1; i<sb.length(); i++) {
-            if (sb.charAt(i) == '(')
+        for(int i = sb.indexOf(LBRACKET.toString()) + 1; i<sb.length(); i++) {
+            if (sb.charAt(i) == LBRACKET)
                 level++;
-            if (sb.charAt(i) == ')')
+            if (sb.charAt(i) == RBRACKET)
                 level--;
 
             if (level == 0) {
@@ -187,13 +199,13 @@ public class SmartExpression implements Expression {
         switch (this.itemType) {
             case Variable:
                 if (!usedVars.isEmpty() && (name + ",").contains(usedVars))
-                    throw new IllegalStateException(String.format("Circular reference of value: %s", name));
+                    throw new IllegalStateException(String.format(ERR_CIRCULAR_REFERENCE, name));
                 if (!name.isEmpty())
                     usedVars = usedVars + name + ",";
                 SmartExpression exprObj = getSiblingByName(expression);
 
                 if (exprObj == null) {
-                    throw new IllegalStateException(String.format("Unknown variable: %s", this.expression));
+                    throw new IllegalStateException(String.format(ERR_UNKNOWN_VARIABLE, this.expression));
                 }
 
                 exprObj.evaluate(usedVars);
@@ -202,7 +214,7 @@ public class SmartExpression implements Expression {
                 return;
             case Function:
                 if (!performFunction()) {
-                    throw new IllegalStateException(String.format("Unknown function: %s", this.expression));
+                    throw new IllegalStateException(String.format(ERR_UNKNOWN_FUNCTION, this.expression));
                 }
                 break;
             case Expression:
@@ -254,7 +266,7 @@ public class SmartExpression implements Expression {
 
         if (!performOperation(item1, item2)) {
             throw new IllegalStateException(
-                    String.format("Undefined operation %s %s %s",
+                    String.format(ERR_UNDEFINED_OPERATION,
                             item1.expression,
                             item1.operation,
                             item2.expression));
@@ -269,7 +281,7 @@ public class SmartExpression implements Expression {
         this.siblings = siblings;
 
         this.expression = expression.trim();
-        if (this.expression.startsWith("(") && this.expression.endsWith(")")) {
+        if (this.expression.startsWith(LBRACKET.toString()) && this.expression.endsWith(RBRACKET.toString())) {
             this.expression = this.getExpression().substring(1, this.getExpression().length() - 1);
         }
 
@@ -312,10 +324,10 @@ public class SmartExpression implements Expression {
         if (";".equals(operation)) {
             return 3;
         }
-        else if (Arrays.asList("*", "/").contains(operation)) {
+        else if (Arrays.asList(OperationHandler.MULIPLY, OperationHandler.DIVIDE).contains(operation)) {
             return 2;
         }
-        else if (Arrays.asList("+", "-").contains(operation)) {
+        else if (Arrays.asList(OperationHandler.PLUS, OperationHandler.MINUS).contains(operation)) {
             return 3;
         }
         else {
@@ -324,7 +336,7 @@ public class SmartExpression implements Expression {
     }
 
     protected boolean isFunctionDelimiter(char input) {
-        return  ';' == input;
+        return  ARG_DELIMITER == input;
     }
 
     protected SmartExpression getInstance(String expression, List<SmartExpression> siblings, String operation, String name) {
@@ -338,7 +350,7 @@ public class SmartExpression implements Expression {
             return true;
         }
         else {
-            System.out.println("Operation handler not found");
+            System.out.println(ERR_OPERATION_HANDLER_NOT_FOUND);
         }
 
         item1.value = "";
@@ -354,7 +366,7 @@ public class SmartExpression implements Expression {
             return true;
         }
         else {
-            System.out.printf("Cant find proper handler for function: %s%n", this.expression);
+            System.out.printf(ERR_FUNCTION_HANDLER_NOT_FOUND, this.expression);
             return false;
         }
     }
@@ -390,7 +402,7 @@ public class SmartExpression implements Expression {
     public String calcValue(String exprName) {
         SmartExpression expr = getSiblingByName(exprName);
         if (expr == null) {
-            return String.format("Expression %s not found", exprName);
+            return String.format(ERR_EXPRESSION_NOT_FOUND, exprName);
         }
         else {
             //TODO: Возможно здесь должен быть конвертер
